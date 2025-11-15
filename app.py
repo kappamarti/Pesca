@@ -28,7 +28,7 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # Coordinate precise delle zone di pesca richieste
 ZONE_COORDINATES = {
-    'Ticino - Sesto Calende (Digà Panperduto)': {'lat': 45.7286, 'lon': 8.6358},
+    'Ticino - Sesto Calende': {'lat': 45.7286, 'lon': 8.6358},
     'Lago Maggiore - Lombardia': {'lat': 45.9000, 'lon': 8.6500},
     'Lago di Varese': {'lat': 45.8167, 'lon': 8.7333},
     'Ticino - Pavia': {'lat': 45.1865, 'lon': 9.1571}
@@ -576,8 +576,8 @@ st.markdown("---")
 st.markdown(
     """
     <div style='text-align: center; color: gray; font-size: 0.8em;'>
-    🎣 Dati meteo in tempo reale da Open-Meteo • API Gratuita<br>
-    📍 Zone di pesca: Sesto Calende, Lago Maggiore, Lago di Varese, Ticino Pavia
+    🎣 Dati meteo in tempo reale da Open-Meteo<br>
+    📍 By Il Sampei di Busto Arsizio KM
     </div>
     """,
     unsafe_allow_html=True
