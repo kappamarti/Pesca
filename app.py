@@ -235,10 +235,10 @@ FISH_SPECIES = {
         'moon_best': ['🌑 Luna Nuova', '🌕 Luna Piena'],
         'season_best': ['Primavera', 'Autunno'],
         'active_hours': ['mattina', 'sera'],
-        'habitat': ['Ticino - Sesto Calende (Digà Panperduto)', 'Ticino - Pavia'],
+        'habitat': ['Ticino - Sesto Calende', 'Ticino - Pavia'],
         'esche': ['Camoscio', 'Lombrico', 'Artificiali'],
         'tecniche': ['Spinning', 'Mosca'],
-        'zone_preferite': ['Ticino - Sesto Calende (Digà Panperduto)']
+        'zone_preferite': ['Ticino - Sesto Calende']
     },
     'Luccio': {
         'temp_min': 10,
@@ -248,7 +248,7 @@ FISH_SPECIES = {
         'moon_best': ['🌒 Luna Crescente', '🌓 Primo Quarto'],
         'season_best': ['Primavera', 'Autunno'],
         'active_hours': ['alba', 'tramonto'],
-        'habitat': ['Lago Maggiore - Lombardia', 'Lago di Varese', 'Ticino - Sesto Calende (Digà Panperduto)'],
+        'habitat': ['Lago Maggiore - Lombardia', 'Lago di Varese', 'Ticino - Sesto Calende'],
         'esche': ['Cucchiaini', 'Siluri', 'Esche vive'],
         'tecniche': ['Spinning', 'Traina'],
         'zone_preferite': ['Lago Maggiore - Lombardia', 'Lago di Varese']
@@ -287,10 +287,10 @@ FISH_SPECIES = {
         'moon_best': ['🌑 Luna Nuova'],
         'season_best': ['Estate', 'Autunno'],
         'active_hours': ['sera', 'notte'],
-        'habitat': ['Ticino - Sesto Calende (Digà Panperduto)', 'Ticino - Pavia'],
+        'habitat': ['Ticino - Sesto Calende', 'Ticino - Pavia'],
         'esche': ['Esche vive', 'Pesci morti'],
         'tecniche': ['Spinning', 'Traina', 'Fondo'],
-        'zone_preferite': ['Ticino - Sesto Calende (Digà Panperduto)']
+        'zone_preferite': ['Ticino - Sesto Calende']
     },
     'Cavedano': {
         'temp_min': 10,
@@ -300,7 +300,7 @@ FISH_SPECIES = {
         'moon_best': ['🌕 Luna Piena', '🌒 Luna Crescente'],
         'season_best': ['Primavera', 'Estate'],
         'active_hours': ['giorno', 'tramonto'],
-        'habitat': ['Ticino - Sesto Calende (Digà Panperduto)', 'Ticino - Pavia'],
+        'habitat': ['Ticino - Sesto Calende', 'Ticino - Pavia'],
         'esche': ['Lombrico', 'Mais', 'Paste'],
         'tecniche': ['Bolognese', 'Inglese'],
         'zone_preferite': ['Ticino - Pavia']
@@ -313,7 +313,7 @@ FISH_SPECIES = {
         'moon_best': ['🌒 Luna Crescente', '🌓 Primo Quarto'],
         'season_best': ['Primavera', 'Estate', 'Autunno'],
         'active_hours': ['mattina', 'pomeriggio', 'sera'],
-        'habitat': ['Lago Maggiore - Lombardia', 'Lago di Varese', 'Ticino - Sesto Calende (Digà Panperduto)'],
+        'habitat': ['Lago Maggiore - Lombardia', 'Lago di Varese', 'Ticino - Sesto Calende'],
         'esche': ['Cucchiaini', 'Artificiali', 'Esche vive'],
         'tecniche': ['Spinning', 'Traina', 'Bolognese'],
         'zone_preferite': ['Lago Maggiore - Lombardia', 'Lago di Varese']
@@ -326,10 +326,10 @@ FISH_SPECIES = {
         'moon_best': ['🌕 Luna Piena', '🌒 Luna Crescente'],
         'season_best': ['Primavera', 'Estate'],
         'active_hours': ['sera', 'notte'],
-        'habitat': ['Ticino - Sesto Calende (Digà Panperduto)', 'Ticino - Pavia'],
+        'habitat': ['Ticino - Sesto Calende', 'Ticino - Pavia'],
         'esche': ['Lombrico', 'Bigattini', 'Paste', 'Mais'],
         'tecniche': ['Bolognese', 'Feeder', 'Fondo'],
-        'zone_preferite': ['Ticino - Sesto Calende (Digà Panperduto)', 'Ticino - Pavia']
+        'zone_preferite': ['Ticino - Sesto Calende', 'Ticino - Pavia']
     }
 }
 
@@ -524,7 +524,7 @@ for fish_name, fish_data, score in fish_list_for_zone:
         # Immagine del pesce
         image_path = get_fish_image(fish_name)
         if image_path:
-            st.image(image_path, caption=fish_name, use_container_width=True)
+            st.image(image_path, caption=fish_name, use_container_width=True)  # CORRETTO: use_container_width
         else:
             # Se non trova l'immagine, mostra un placeholder
             st.markdown(f"""
