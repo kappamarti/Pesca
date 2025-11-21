@@ -5,6 +5,7 @@ from datetime import datetime, date, timedelta
 import requests
 import json
 import os
+import pickle
 from database_pesca import ZONE_COORDINATES, FISHING_CALENDAR, FISH_SPECIES
 
 # Configurazione della pagina per mobile
@@ -34,6 +35,43 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+# File per salvare le temperature storiche
+WATER_TEMP_HISTORY_FILE = "water_temp_history.pkl"
+
+def load_water_temp_history():
+    """Carica lo storico delle temperature dell'acqua"""
+    try:
+        if os.path.exists(WATER_TEMP_HISTORY_FILE):
+            with open(WATER_TEMP_HISTORY_FILE, 'rb') as f:
+                return pickle.load(f)
+    except:
+        pass
+    return {}
+
+def save_water_temp_history(history):
+    """Salva lo storico delle temperature dell'acqua"""
+    try:
+        with open(WATER_TEMP_HISTORY_FILE, 'wb') as f:
+            pickle.dump(history, f)
+    except:
+        pass
+
+def get_water_level_trend(location_name, current_data):
+    """Determina l'andamento del livello dell'acqua basato su meteo e condizioni"""
+    precipitation = current_data.get('precipitation', 0)
+    weather_code = current_data.get('weather_code', 0)
+    
+    # Pioggia attuale o prevista aumenta il livello
+    if weather_code in [61, 63, 65, 80, 81, 82, 95, 96, 99]:
+        return "↑ Salendo", "green"
+    elif precipitation > 2.0:
+        return "↑ Salendo", "green"
+    # Condizioni secche diminuiscono il livello
+    elif weather_code in [0, 1] and precipitation == 0:
+        return "↓ Scendendo", "red"
+    else:
+        return "→ Stabile", "blue"
+
 # Percorso immagini locali
 def get_fish_image(fish_name):
     """Restituisce il percorso dell'immagine del pesce"""
@@ -53,6 +91,165 @@ def get_fish_image(fish_name):
         return path
     else:
         return None
+
+def calculate_water_temperature(air_temp, current_data, location_name):
+    """Calcola temperatura acqua considerando l'assorbimento termico dell'acqua"""
+    
+    current_date = datetime.now().date()
+    current_month = datetime.now().month
+    current_hour = datetime.now().hour
+    
+    # Carica storico temperature
+    temp_history = load_water_temp_history()
+    
+    # Dati REALI temperatura acqua medi per zona (basati su dati ARPA)
+    water_data = {
+        # Mese: Panperduto, Lago Maggiore, Lago di Varese, Oleggio
+        1: {'Panperduto': 6.5, 'Lago Maggiore - Lombardia': 6.0, 'Lago di Varese': 5.0, 'Oleggio': 6.0},
+        2: {'Panperduto': 7.0, 'Lago Maggiore - Lombardia': 6.5, 'Lago di Varese': 5.5, 'Oleggio': 6.5},
+        3: {'Panperduto': 9.0, 'Lago Maggiore - Lombardia': 8.0, 'Lago di Varese': 7.5, 'Oleggio': 8.5},
+        4: {'Panperduto': 12.0, 'Lago Maggiore - Lombardia': 10.5, 'Lago di Varese': 12.0, 'Oleggio': 11.5},
+        5: {'Panperduto': 16.0, 'Lago Maggiore - Lombardia': 14.0, 'Lago di Varese': 17.0, 'Oleggio': 15.5},
+        6: {'Panperduto': 19.0, 'Lago Maggiore - Lombardia': 18.0, 'Lago di Varese': 21.0, 'Oleggio': 18.5},
+        7: {'Panperduto': 21.0, 'Lago Maggiore - Lombardia': 21.5, 'Lago di Varese': 24.0, 'Oleggio': 20.5},
+        8: {'Panperduto': 20.5, 'Lago Maggiore - Lombardia': 22.0, 'Lago di Varese': 23.5, 'Oleggio': 20.0},
+        9: {'Panperduto': 18.0, 'Lago Maggiore - Lombardia': 19.0, 'Lago di Varese': 20.0, 'Oleggio': 17.5},
+        10: {'Panperduto': 14.5, 'Lago Maggiore - Lombardia': 15.0, 'Lago di Varese': 15.5, 'Oleggio': 14.0},
+        11: {'Panperduto': 10.5, 'Lago Maggiore - Lombardia': 11.0, 'Lago di Varese': 10.0, 'Oleggio': 10.0},
+        12: {'Panperduto': 7.5, 'Lago Maggiore - Lombardia': 7.0, 'Lago di Varese': 6.0, 'Oleggio': 7.0}
+    }
+    
+    # Temperatura base stagionale per la zona
+    seasonal_base = water_data[current_month].get(location_name, 15.0)
+    
+    # Recupera temperatura precedente (se esiste)
+    location_key = f"{location_name}_{current_month}"
+    previous_temp = None
+    heat_accumulation = 0
+    
+    if location_key in temp_history:
+        history_data = temp_history[location_key]
+        previous_temp = history_data['temp']
+        heat_accumulation = history_data.get('heat_accumulation', 0)
+        last_date = history_data['date']
+        
+        # Calcola giorni passati dall'ultimo aggiornamento
+        days_passed = (current_date - last_date).days
+    else:
+        days_passed = 1
+        previous_temp = seasonal_base
+    
+    # 1. ASSORBIMENTO TERMICO - L'acqua accumula calore lentamente
+    current_air_temp = air_temp
+    
+    # Differenza tra aria e acqua - questo è il POTENZIALE di scambio termico
+    temp_gap = current_air_temp - previous_temp
+    
+    # Coefficiente di assorbimento (molto basso - l'acqua assorbe lentamente)
+    absorption_rate = 0.08  # Solo l'8% del gap termico viene assorbito giornalmente
+    
+    # Se l'aria è più calda dell'acqua, l'acqua ASSORBE calore
+    if temp_gap > 0:
+        daily_heat_gain = temp_gap * absorption_rate
+        # L'assorbimento è maggiore di giorno e con sole
+        if 8 <= current_hour <= 18:  # Ore diurne
+            daily_heat_gain *= 1.3
+        if current_data['weather_code'] in [0, 1]:  # Cielo sereno
+            daily_heat_gain *= 1.5
+    else:
+        # Se l'aria è più fredda, l'acqua PERDE calore (più lentamente)
+        daily_heat_gain = temp_gap * (absorption_rate * 0.6)  # Perde calore più lentamente
+    
+    # 2. ACCUMULO TERMICO - L'acqua ha una "memoria" del calore assorbito
+    heat_accumulation += daily_heat_gain
+    
+    # L'accumulo si dissipa lentamente nel tempo (effetto di rilascio)
+    heat_dissipation = heat_accumulation * 0.05  # 5% di dissipazione giornaliera
+    heat_accumulation -= heat_dissipation
+    
+    # Limita l'accumulo per evitare valori estremi
+    max_heat_accumulation = 8.0  # Massimo accumulo possibile
+    heat_accumulation = max(-max_heat_accumulation, min(max_heat_accumulation, heat_accumulation))
+    
+    # 3. CALCOLO TEMPERATURA CON ASSORBIMENTO
+    water_temp = previous_temp + heat_accumulation
+    
+    # 4. EFFETTI IMMEDIATI (limitati)
+    immediate_effects = 0
+    
+    # Pioggia raffredda immediatamente lo strato superficiale
+    if current_data['weather_code'] in [61, 63, 65, 80, 81, 82]:
+        immediate_effects -= 0.3
+    
+    # Vento forte aumenta lo scambio termico superficiale
+    wind_speed = current_data.get('wind_speed_10m', 0) * 3.6
+    if wind_speed > 25:
+        if current_air_temp < water_temp:
+            immediate_effects -= 0.4  # Raffreddamento da vento
+        else:
+            immediate_effects += 0.2  # Riscaldamento da vento
+    
+    # 5. CARATTERISTICHE SPECIFICHE DELLA ZONA
+    zone_modifier = 0
+    
+    if "Panperduto" in location_name:
+        # Fiume - assorbe e perde calore più velocemente
+        zone_modifier = heat_accumulation * 1.2
+    
+    elif "Lago Maggiore" in location_name:
+        # Grande lago - altissima inerzia termica
+        zone_modifier = heat_accumulation * 0.7
+    
+    elif "Lago di Varese" in location_name:
+        # Lago piccolo - si scalda più velocemente
+        zone_modifier = heat_accumulation * 1.4
+    
+    elif "Oleggio" in location_name:
+        # Fiume Ticino - caratteristiche intermedie
+        zone_modifier = heat_accumulation * 1.1
+    
+    # 6. APPLICA TUTTI GLI EFFETTI
+    water_temp = water_temp + immediate_effects + zone_modifier
+    
+    # 7. MANTIENI UNA BASE STAGIONALE (l'acqua non può scostarsi troppo dalla media stagionale)
+    seasonal_attraction = (seasonal_base - water_temp) * 0.1  # Tende verso la media stagionale
+    water_temp += seasonal_attraction
+    
+    # 8. LIMITI REALISTICI
+    limits = {
+        'Panperduto': (4, 24),
+        'Lago Maggiore - Lombardia': (5, 25),
+        'Lago di Varese': (4, 26),
+        'Oleggio': (4, 23)
+    }
+    
+    min_temp, max_temp = limits.get(location_name, (2, 28))
+    water_temp = max(min_temp, min(max_temp, water_temp))
+    
+    # 9. SALVA LO STATO TERMICO
+    temp_history[location_key] = {
+        'temp': water_temp,
+        'date': current_date,
+        'heat_accumulation': heat_accumulation,
+        'air_temp': current_air_temp,
+        'seasonal_base': seasonal_base
+    }
+    
+    # Pulizia storico vecchio
+    keys_to_remove = []
+    for key, data in temp_history.items():
+        if (current_date - data['date']).days > 30:
+            keys_to_remove.append(key)
+    
+    for key in keys_to_remove:
+        del temp_history[key]
+    
+    save_water_temp_history(temp_history)
+    
+    # 10. ARROTONDAMENTO FINALE
+    water_temp = round(water_temp, 1)
+    
+    return water_temp
 
 # Funzione per ottenere dati meteo reali da Open-Meteo (GRATUITA)
 def get_real_weather_data(lat, lon, location_name):
@@ -83,6 +280,9 @@ def process_weather_data(data, location_name, lat, lon):
     # Processa le previsioni orarie con pressione
     hourly_data = process_hourly_forecast(data)
     
+    # Calcola andamento livello acqua
+    water_level_trend, level_color = get_water_level_trend(location_name, current)
+    
     weather_info = {
         'location': location_name,
         'temperature': round(air_temp, 1),
@@ -95,6 +295,8 @@ def process_weather_data(data, location_name, lat, lon):
         'clouds': current['cloud_cover'],
         'visibility': 10,
         'hourly_forecast': hourly_data,
+        'water_level_trend': water_level_trend,
+        'water_level_color': level_color,
         'success': True
     }
     return weather_info
@@ -159,92 +361,6 @@ def get_weather_main(weather_code):
     else:
         return "Clouds"
 
-def calculate_water_temperature(air_temp, current_data, location_name):
-    """Calcola temperatura acqua unendo dati ARPA e influenze locali/meteo"""
-    
-    current_month = datetime.now().month
-    
-    # Dati ARPA medi temperatura acqua lombarda + range stagionale
-    water_data = {
-        # Mese: (temp_media, min_storico, max_storico)
-        1: (5.5, 3, 7),    # Gennaio
-        2: (6.0, 4, 8),    # Febbraio  
-        3: (8.5, 6, 11),   # Marzo
-        4: (12.5, 9, 16),  # Aprile
-        5: (16.5, 13, 20), # Maggio
-        6: (20.5, 17, 24), # Giugno
-        7: (23.5, 20, 27), # Luglio
-        8: (22.5, 19, 26), # Agosto
-        9: (19.5, 16, 23), # Settembre
-        10: (15.5, 12, 19), # Ottobre
-        11: (11.5, 8, 15),  # Novembre
-        12: (7.5, 5, 10)    # Dicembre
-    }
-    
-    base_temp, min_hist, max_hist = water_data[current_month]
-    
-    # 1. INFLUENZA TEMPERATURA ARIA (30%)
-    air_effect = (air_temp - base_temp) * 0.3
-    
-    # 2. INFLUENZA LOCATION (caratteristiche specifiche)
-    location_effect = 0
-    location_variability = 0.3  # default
-    
-    if "Panperduto" in location_name:
-        location_effect = (air_temp - base_temp) * 0.4
-        location_variability = 0.4
-        if current_month in [6, 7, 8]:
-            location_effect -= 1.5
-    
-    elif "Lago Maggiore" in location_name:
-        location_effect = (air_temp - base_temp) * 0.15
-        location_variability = 0.15
-        if current_month in [6, 7, 8]:
-            location_effect -= 2.0
-    
-    elif "Lago di Varese" in location_name:
-        location_effect = (air_temp - base_temp) * 0.35
-        location_variability = 0.35
-        if current_month in [6, 7, 8]:
-            location_effect += 2.5
-    
-    elif "Oleggio" in location_name:
-        location_effect = (air_temp - base_temp) * 0.3
-        location_variability = 0.3
-        if current_month in [6, 7, 8]:
-            location_effect += 1.0
-    
-    # 3. INFLUENZA METEO CORRENTE
-    weather_code = current_data['weather_code']
-    weather_effect = 0
-    
-    if weather_code in [0, 1]:
-        if current_month in [4, 5, 6, 7, 8, 9]:
-            weather_effect += 1.0 + (location_variability * 2)
-    
-    elif weather_code in [61, 63, 65, 80, 81, 82]:
-        weather_effect -= 0.8
-    
-    elif weather_code in [95, 96, 99]:
-        weather_effect -= 1.2
-    
-    elif weather_code in [2, 3]:
-        weather_effect -= 0.3
-    
-    # 4. CALCOLO TEMPERATURA FINALE
-    water_temp = base_temp + air_effect + location_effect + weather_effect
-    
-    # 5. LIMITI REALISTICI
-    absolute_min = max(2, min_hist - 2)
-    absolute_max = min(28, max_hist + 2)
-    
-    water_temp = max(absolute_min, min(absolute_max, water_temp))
-    
-    # 6. ARROTONDAMENTO
-    water_temp = round(water_temp, 1)
-    
-    return water_temp
-
 def get_fallback_weather_data(location_name):
     """Dati di fallback se l'API non funziona"""
     current_month = datetime.now().month
@@ -267,6 +383,9 @@ def get_fallback_weather_data(location_name):
         water_temp += 1
     elif "Oleggio" in location_name:
         water_temp += 0.5
+    
+    # Calcola andamento livello acqua per fallback
+    water_level_trend, level_color = get_water_level_trend(location_name, {'weather_code': 0})
     
     # Previsioni orarie fallback con pressione
     hourly_forecast = []
@@ -298,6 +417,8 @@ def get_fallback_weather_data(location_name):
         'clouds': np.random.randint(20, 80),
         'visibility': np.random.randint(5, 15),
         'hourly_forecast': hourly_forecast,
+        'water_level_trend': water_level_trend,
+        'water_level_color': level_color,
         'success': False
     }
 
@@ -398,7 +519,7 @@ with tab1:
     st.markdown("---")
     st.subheader(f"🌡️ Condizioni a {zona_selezionata}")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         st.metric("Temperatura Aria", f"{weather_data['temperature']}°C")
@@ -411,6 +532,21 @@ with tab1:
     with col3:
         st.metric("Pressione", f"{weather_data['pressure']} hPa")
         st.metric("Nuvolosità", f"{weather_data['clouds']}%")
+        
+    with col4:
+        # Mostra livello acqua con freccia colorata
+        level_emoji = "🌊"
+        if "↑" in weather_data['water_level_trend']:
+            level_emoji = "📈"
+        elif "↓" in weather_data['water_level_trend']:
+            level_emoji = "📉"
+        
+        st.markdown(f"""
+        <div style="text-align: center; padding: 10px; border-radius: 10px; background: {weather_data['water_level_color']}20; border: 1px solid {weather_data['water_level_color']}50;">
+            <h3 style="margin: 0; color: {weather_data['water_level_color']};">{level_emoji} {weather_data['water_level_trend']}</h3>
+            <p style="margin: 0; font-size: 0.9em; color: #666;">Livello acqua</p>
+        </div>
+        """, unsafe_allow_html=True)
 
     # Info meteo e luna
     col_info1, col_info2 = st.columns(2)
@@ -424,64 +560,98 @@ with tab1:
         st.info(f"**{moon_phase}**")
         st.info(f"**Stagione:** {current_season}")
 
-    # PREVISIONI ORARIE - CON PRESSIONE SENZA FRECCE
+    # PREVISIONI ORARIE - Container scrollabile orizzontale
     st.markdown("---")
     st.subheader("⏰ Previsioni Prossime 6 Ore")
 
     if 'hourly_forecast' in weather_data and weather_data['hourly_forecast']:
         forecast_data = weather_data['hourly_forecast']
         
-        # Crea colonne per ogni ora
-        cols = st.columns(6)
+        # Container scrollabile orizzontale per mobile
+        st.markdown("""
+        <style>
+        .scrollable-container {
+            display: flex;
+            overflow-x: auto;
+            gap: 10px;
+            padding: 10px 0;
+            scrollbar-width: thin;
+        }
+        .hour-card {
+            min-width: 100px;
+            padding: 10px;
+            background: white;
+            border-radius: 10px;
+            border: 1px solid #e0e0e0;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .hour-card h4 {
+            margin: 0 0 5px 0;
+            font-size: 1.5em;
+        }
+        .hour-card h5 {
+            margin: 0 0 8px 0;
+            color: #333;
+        }
+        .hour-card p {
+            margin: 3px 0;
+            font-size: 0.8em;
+        }
+        </style>
+        """, unsafe_allow_html=True)
         
-        for i, hour_data in enumerate(forecast_data):
-            with cols[i]:
-                # Determina se è notte (tra le 20:00 e le 6:00)
-                hour = int(hour_data['time'].split(':')[0])
-                is_night = hour >= 20 or hour <= 6
-                
-                # Icona meteo in base alle condizioni e all'orario
-                if "Pioggia" in hour_data['weather_description'] or "Rovesci" in hour_data['weather_description']:
-                    emoji = "🌧️"
-                    color = "blue"
-                elif "Temporale" in hour_data['weather_description']:
-                    emoji = "⛈️"
-                    color = "red"
-                elif "Nuvoloso" in hour_data['weather_description']:
-                    emoji = "☁️"
-                    color = "gray"
-                elif "Nebbia" in hour_data['weather_description']:
-                    emoji = "🌫️"
-                    color = "lightgray"
-                elif "Sereno" in hour_data['weather_description']:
-                    if is_night:
-                        emoji = "🌙"  # Luna di notte
-                        color = "navy"
-                    else:
-                        emoji = "☀️"  # Sole di giorno
-                        color = "orange"
+        # Container scrollabile
+        st.markdown('<div class="scrollable-container">', unsafe_allow_html=True)
+        
+        for hour_data in forecast_data:
+            # Determina se è notte (tra le 20:00 e le 6:00)
+            hour = int(hour_data['time'].split(':')[0])
+            is_night = hour >= 20 or hour <= 6
+            
+            # Icona meteo in base alle condizioni e all'orario
+            if "Pioggia" in hour_data['weather_description'] or "Rovesci" in hour_data['weather_description']:
+                emoji = "🌧️"
+                color = "blue"
+            elif "Temporale" in hour_data['weather_description']:
+                emoji = "⛈️"
+                color = "red"
+            elif "Nuvoloso" in hour_data['weather_description']:
+                emoji = "☁️"
+                color = "gray"
+            elif "Nebbia" in hour_data['weather_description']:
+                emoji = "🌫️"
+                color = "lightgray"
+            elif "Sereno" in hour_data['weather_description']:
+                if is_night:
+                    emoji = "🌙"  # Luna di notte
+                    color = "navy"
                 else:
-                    # Condizioni variabili
-                    if is_night:
-                        emoji = "☁️"
-                        color = "darkgray"
-                    else:
-                        emoji = "⛅"
-                        color = "gray"
-                
-                st.markdown(f"<h4 style='text-align: center; color: {color};'>{emoji}</h4>", unsafe_allow_html=True)
-                st.markdown(f"<h5 style='text-align: center;'>{hour_data['time']}</h5>", unsafe_allow_html=True)
-                st.markdown(f"<p style='text-align: center;'>{hour_data['temperature']}°C</p>", unsafe_allow_html=True)
-                st.markdown(f"<p style='text-align: center; font-size: 0.8em;'>{hour_data['weather_description']}</p>", unsafe_allow_html=True)
-                
-                # Pressione SENZA FRECCIA
-                st.markdown(f"<p style='text-align: center; font-size: 0.8em;'>📊 {hour_data['pressure']} hPa</p>", unsafe_allow_html=True)
-                
-                # Mostra probabilità pioggia se significativa
-                if hour_data['precipitation_probability'] > 20:
-                    st.markdown(f"<p style='text-align: center; color: blue; font-size: 0.8em;'>💧 {hour_data['precipitation_probability']}%</p>", unsafe_allow_html=True)
-                
-                st.markdown(f"<p style='text-align: center; font-size: 0.8em;'>🌬️ {hour_data['wind_speed']} km/h</p>", unsafe_allow_html=True)
+                    emoji = "☀️"  # Sole di giorno
+                    color = "orange"
+            else:
+                # Condizioni variabili
+                if is_night:
+                    emoji = "☁️"
+                    color = "darkgray"
+                else:
+                    emoji = "⛅"
+                    color = "gray"
+            
+            # Crea la card per ogni ora
+            st.markdown(f"""
+            <div class="hour-card">
+                <h4 style='color: {color};'>{emoji}</h4>
+                <h5>{hour_data['time']}</h5>
+                <p><strong>{hour_data['temperature']}°C</strong></p>
+                <p style='font-size: 0.7em; color: #666;'>{hour_data['weather_description']}</p>
+                <p style='color: #888;'>📊 {hour_data['pressure']} hPa</p>
+                {"<p style='color: blue;'>💧 " + str(hour_data['precipitation_probability']) + "%</p>" if hour_data['precipitation_probability'] > 20 else ""}
+                <p style='color: #666;'>🌬️ {hour_data['wind_speed']} km/h</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
 
         # Analizza le previsioni per dare consigli
         rain_hours = [h for h in forecast_data if h['precipitation_probability'] > 50]
