@@ -146,7 +146,7 @@ def calculate_water_temperature(air_temp, current_data, location_name):
     temp_gap = current_air_temp - previous_temp
     
     # Coefficiente di assorbimento (molto basso - l'acqua assorbe lentamente)
-    absorption_rate = 0.08  # Solo l'8% del gap termico viene assorbito giornalmente
+    absorption_rate = 0.08  # Solo l'8% del gap termico viene assorbito giornalemente
     
     # Se l'aria è più calda dell'acqua, l'acqua ASSORBE calore
     if temp_gap > 0:
@@ -560,100 +560,52 @@ with tab1:
         st.info(f"**{moon_phase}**")
         st.info(f"**Stagione:** {current_season}")
 
-    # PREVISIONI ORARIE - Container scrollabile orizzontale
+    # PREVISIONI ORARIE - SOLO STREAMLIT
     st.markdown("---")
     st.subheader("⏰ Previsioni Prossime 6 Ore")
 
     if 'hourly_forecast' in weather_data and weather_data['hourly_forecast']:
         forecast_data = weather_data['hourly_forecast']
         
-        # Container scrollabile orizzontale per mobile
-        st.markdown("""
-        <style>
-        .scrollable-container {
-            display: flex;
-            overflow-x: auto;
-            gap: 10px;
-            padding: 10px 0;
-            scrollbar-width: thin;
-        }
-        .hour-card {
-            min-width: 100px;
-            padding: 10px;
-            background: white;
-            border-radius: 10px;
-            border: 1px solid #e0e0e0;
-            text-align: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .hour-card h4 {
-            margin: 0 0 5px 0;
-            font-size: 1.5em;
-        }
-        .hour-card h5 {
-            margin: 0 0 8px 0;
-            color: #333;
-        }
-        .hour-card p {
-            margin: 3px 0;
-            font-size: 0.8em;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+        # Crea le cards centrate
+        cols = st.columns(len(forecast_data))
         
-        # Container scrollabile
-        st.markdown('<div class="scrollable-container">', unsafe_allow_html=True)
-        
-        for hour_data in forecast_data:
-            # Determina se è notte (tra le 20:00 e le 6:00)
-            hour = int(hour_data['time'].split(':')[0])
-            is_night = hour >= 20 or hour <= 6
-            
-            # Icona meteo in base alle condizioni e all'orario
-            if "Pioggia" in hour_data['weather_description'] or "Rovesci" in hour_data['weather_description']:
-                emoji = "🌧️"
-                color = "blue"
-            elif "Temporale" in hour_data['weather_description']:
-                emoji = "⛈️"
-                color = "red"
-            elif "Nuvoloso" in hour_data['weather_description']:
-                emoji = "☁️"
-                color = "gray"
-            elif "Nebbia" in hour_data['weather_description']:
-                emoji = "🌫️"
-                color = "lightgray"
-            elif "Sereno" in hour_data['weather_description']:
-                if is_night:
-                    emoji = "🌙"  # Luna di notte
-                    color = "navy"
-                else:
-                    emoji = "☀️"  # Sole di giorno
-                    color = "orange"
-            else:
-                # Condizioni variabili
-                if is_night:
+        for i, (col, hour_data) in enumerate(zip(cols, forecast_data)):
+            with col:
+                # Determina emoji
+                hour = int(hour_data['time'].split(':')[0])
+                is_night = hour >= 20 or hour <= 6
+                
+                if "Pioggia" in hour_data['weather_description'] or "Rovesci" in hour_data['weather_description']:
+                    emoji = "🌧️"
+                elif "Temporale" in hour_data['weather_description']:
+                    emoji = "⛈️"
+                elif "Nuvoloso" in hour_data['weather_description']:
                     emoji = "☁️"
-                    color = "darkgray"
+                elif "Nebbia" in hour_data['weather_description']:
+                    emoji = "🌫️"
+                elif "Sereno" in hour_data['weather_description']:
+                    emoji = "🌙" if is_night else "☀️"
                 else:
                     emoji = "⛅"
-                    color = "gray"
-            
-            # Crea la card per ogni ora
-            st.markdown(f"""
-            <div class="hour-card">
-                <h4 style='color: {color};'>{emoji}</h4>
-                <h5>{hour_data['time']}</h5>
-                <p><strong>{hour_data['temperature']}°C</strong></p>
-                <p style='font-size: 0.7em; color: #666;'>{hour_data['weather_description']}</p>
-                <p style='color: #888;'>📊 {hour_data['pressure']} hPa</p>
-                {"<p style='color: blue;'>💧 " + str(hour_data['precipitation_probability']) + "%</p>" if hour_data['precipitation_probability'] > 20 else ""}
-                <p style='color: #666;'>🌬️ {hour_data['wind_speed']} km/h</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Card con st.container()
+                with st.container():
+                    st.markdown(f"### {emoji}")
+                    st.markdown(f"**{hour_data['time']}**")
+                    st.markdown(f"**{hour_data['temperature']}°C**")
+                    st.markdown(f"{hour_data['weather_description']}")
+                    st.markdown(f"📊 {hour_data['pressure']} hPa")
+                    
+                    if hour_data['precipitation_probability'] > 20:
+                        st.markdown(f"💧 {hour_data['precipitation_probability']}%")
+                    
+                    st.markdown(f"🌬️ {hour_data['wind_speed']} km/h")
+                
+                # Aggiungi un po' di spazio tra le cards
+                st.markdown("<br>", unsafe_allow_html=True)
 
-        # Analizza le previsioni per dare consigli
+        # Analizza le previsioni
         rain_hours = [h for h in forecast_data if h['precipitation_probability'] > 50]
         good_hours = [h for h in forecast_data if h['precipitation_probability'] < 30 and "Sereno" in h['weather_description']]
         
